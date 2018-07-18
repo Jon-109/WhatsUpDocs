@@ -1,3 +1,4 @@
 node_modules
 out
 .eslintcache
+src/.DS_Store
