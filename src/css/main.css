@@ -1,0 +1,71 @@
+h2 {
+  color: blue;
+}
+
+.editor {
+  min-height: 700px;
+  padding: 10px;
+  border: solid 4px black;
+
+}
+
+.toolbar {
+  border: solid 2px black;
+  margin: auto;
+  align-items: center;
+  overflow: auto;
+  white-space: nowrap;
+
+}
+
+.button {
+    background-color: gray /* Green */
+    border: solid 2px black;
+    color: blue;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 14px;
+}
+
+.header {
+  color: blue;
+  font-family: 'Hoefler Text', Georgia, serif;
+  font-style: bold;
+  text-align: left;
+}
+
+.textbox {
+  min-height: 650px;
+  padding: 10px;
+  border: solid 1px blue;
+}
+
+.show {
+  display: block;
+}
+
+
+.align-right div {
+    text-align: right;
+}
+
+.align-center div {
+    text-align: center;
+}
+
+.align-left div {
+    text-align: left;
+}
+
+.colorpicker {
+  background-color: gray /* Green */
+  border: solid 2px black;
+  color: blue;
+  padding: 10px 20px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 14px;
+}
