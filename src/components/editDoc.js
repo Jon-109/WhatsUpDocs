@@ -1,7 +1,7 @@
 import React, {Component, PropTypes} from 'react';
 import createAlignmentPlugin from 'draft-js-alignment-plugin';
 import { Header, Form, Button } from 'semantic-ui-react';
-import { Editor, EditorState, RichUtils, CharacterMetadata, convertToRaw, convertFromRaw, SelectionState } from 'draft-js';
+import { Editor, EditorState, RichUtils, CharacterMetadata, convertToRaw, convertFromRaw, SelectionState, genKey, ContentBlock, ContentState, Modifier } from 'draft-js';
 import RichTextEditor from 'react-rte';
 import createStyles from 'draft-js-custom-styles';
 import ColorPicker, {colorPickerPlugin} from 'draft-js-color-picker'
@@ -128,15 +128,17 @@ export default class EditDoc extends React.Component {
       color: 'black',
     };
     this.onChange = async (editorState) => {
-      if (!this.isSelection(editorState)) {
-        return;
-      }
-      editorState = RichUtils.toggleInlineStyle(editorState, 'HIGHLIGHT');
       await this.setState({ editorState });
       socket.emit('content',
                   convertToRaw(this.state.editorState.getCurrentContent()),
-                  this.state.editorState.getSelection())
+                  this.state.editorState.getSelection(),
+                  this.state.editColor
+                )
     };
+    this.onFocus = () => {
+      console.log('focusing');
+      socket.emit('focus', this.state.editorState.getSelection(), this.state.editColor)
+    }
     this.getEditorState = () => this.state.editorState;
     this.picker = colorPickerPlugin(this.onChange, this.getEditorState);
   }
@@ -154,9 +156,35 @@ export default class EditDoc extends React.Component {
       })
     })
 
-    socket.on('content', (msg, currentLoc) => {
-      const editor = EditorState.createWithContent(convertFromRaw(msg));
+    socket.on('content', (msg, currentLoc, color) => {
+      const content = convertFromRaw(msg);
+      // const cursor = new ContentBlock({
+      //   key: genKey(),
+      //   type: 'unstyled',
+      //   text: '|',
+      //   inlineStyleRanges: [Array],
+      //   entityRanges: [{"style": `color-${color}`}],
+      //   data: {},
+      // });
+      //
+      // const blockmap = content.getBlockMap().set(cursor.key, cursor);
+      // console.log("blockmap", blockmap);
+      // const contentState = ContentState
+      //                 .createFromBlockArray(blockmap.toArray())
+      //                 .set('selectionAfter', content.getSelectionAfter());
+      const editor = EditorState.createWithContent(content);
       this.setState({ editorState: EditorState.forceSelection(editor, new SelectionState(currentLoc)) });
+    })
+
+    socket.on('focus', (selection, color) => {
+      // console.log('focusing on frontend')
+      // const content = Modifier.insertText(
+      //   this.state.editorState.getCurrentContent(),
+      //   this.state.editorState.getSelection(),
+      //   'blablablab'
+      // );
+      // console.log(content);
+      this.setState({ editorState: EditorState.createWithContent(content) })
     })
   }
 
@@ -196,7 +224,7 @@ export default class EditDoc extends React.Component {
     this.onChange(EditorState.redo(this.state.editorState));
   }
 
-  isSelection = (editorState) => {
+  isSelection(editorState) {
     const selection = editorState.getSelection();
     const start = selection.getStartOffset();
     const end = selection.getEndOffset();
@@ -279,6 +307,7 @@ export default class EditDoc extends React.Component {
               onChange={this.onChange}
               onTab={this.onTab}
               readOnly={this.state.readOnly}
+              onFocus={this.onFocus}
             />
           </div>
         </div>

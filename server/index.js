@@ -92,9 +92,14 @@ io.on('connection', function (socket) {
     });
   })
 
-  socket.on('content', (msg, currentLoc) => {
-    console.log('content', msg, currentLoc);
-    io.in(socket.room).emit('content', msg, currentLoc);
+  socket.on('content', (msg, currentLoc, color) => {
+    // console.log('content', msg, currentLoc);
+    socket.to(socket.room).emit('content', msg, currentLoc, color);
+  })
+
+  socket.on('focus', (selection, color) => {
+    console.log("focus", socket.color, selection);
+    socket.to(socket.room).emit('focus', selection, color);
   })
 
   socket.on('leave', (docId, user) => {
