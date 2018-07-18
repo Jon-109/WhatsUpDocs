@@ -94,7 +94,7 @@ io.on('connection', function (socket) {
 
   socket.on('content', (msg, currentLoc) => {
     console.log('content', msg, currentLoc);
-    socket.to(socket.room).emit('content', msg, currentLoc);
+    io.in(socket.room).emit('content', msg, currentLoc);
   })
 
   socket.on('leave', (docId, user) => {
