@@ -17,10 +17,10 @@
 <script type="text/jsx">
 import React from 'react';
 import ReactDOM from 'react-dom';
-import App from './components/App.js';
+import {AppContainer} from 'react-hot-loader';
 
 const render = () => {
-  const App = require('./components/app').default;
+  const App = require('./components/app.jsx').default;
   ReactDOM.render(<AppContainer><App /></AppContainer>, document.getElementById('App'));
 }
 
