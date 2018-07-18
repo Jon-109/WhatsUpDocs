@@ -1,72 +1,95 @@
 import React from 'react';
 import { Redirect, Link } from 'react-router-dom'
-import { Form, Button } from 'semantic-ui-react';
-import DocDisplay from './docDisplay'
+import { Grid, Header, Form, Button } from 'semantic-ui-react';
+import DocDisplay from './docDisplay';
+const path = 'http://127.0.0.1:2000';
+import NewDocModal from './newDocModal';
+import socket from './../socket';
 
 export default class Portal extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      new: "",
-      add: "",
+      new: '',
+      add: '',
       user: this.props.user,
-      docs: this.props.user.docs,
+      docs: [],
+      pwd: '',
+      pwdAdd: '',
+      error: '',
+      newModal: false,
+      addModal: false,
     };
   }
 
-  new(){
-    fetch('http://127.0.0.1:1337/new',
-    { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: this.state.new,
-        author: this.state.user,
-        password: 123,
-        collaborators: [this.state.user._id]
-      }),
+  componentDidMount(){
+    socket.emit('allDocs', this.state.user._id);
+    socket.on('allDocs', documents => {
+      const docs = JSON.parse(documents);
+      let listArr = [];
+      for (var i in docs){
+        for (var u in docs[i]["collaborators"]){
+          if (docs[i]["collaborators"][u]["_id"] === this.state.user._id) {
+            listArr.push(docs[i]);
+          }
+        }
+      }
+      this.setState({ docs: listArr })
     })
-    .then(resp => resp.json())
-    .then(docObj => {
-      console.log("new document", docObj);
-      let tempObj = Object.assign(this.state.user);
-      let tempDocsArr = tempObj.docs.slice();
-      console.log("tempArr", tempDocsArr);
-      tempDocsArr.push(docObj._id);
-      tempObj.docs = tempDocsArr;
-      this.setState({user: tempObj, docs: tempDocsArr, new: ""})
-    })
-    .catch(err => { console.log(err);});
   }
 
-  add(){
-    fetch('http://127.0.0.1:1337/add',
-    { method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        doc: this.state.add,
-        user: this.state.user,
-        password: 123,
-      }),
+  new(title, password){
+    socket.emit('newDoc', title, this.state.user, password)
+    socket.on('newDoc', resp => {
+      const docObj = JSON.parse(resp);
+      docObj.author = {name: this.state.user.name};
+      let tempDocsArr = this.state.docs.slice();
+      tempDocsArr.push(docObj);
+      this.setState({ docs: tempDocsArr, new: '', pwd: '' });
     })
-    .catch(err => {console.log(err);});
-    let tempObj = Object.assign(this.state.user);
-    let tempDocsArr = tempObj.docs.slice();
-    tempDocsArr.push(this.state.add);
-    tempObj.docs = tempDocsArr;
-    this.setState({user:tempObj, docs: tempDocsArr, add: ""})
+  }
+
+  add(title, password){
+    socket.emit('add', title, password, this.state.user);
+    socket.on('add', resp=>{
+      const docObj = JSON.parse(resp);
+      let tempDocsArr = this.state.docs.slice();
+      tempDocsArr.push(docObj);
+      console.log("tempDocs: ", tempDocsArr);
+      this.setState({docs: tempDocsArr, add: '', pwdAdd: '' });
+    })
+    socket.on('error', msg=>{
+      this.setState({error: msg})
+    })
   }
 
   render() {
     return (
       <div>
-        <input placeholder="new document" onChange={(e)=>{this.setState({new:e.target.value})}}/>
-        <button type="submit" onClick={this.new.bind(this)}>Create new document</button>
+        <h4>Welcome, {this.state.user.name}</h4>
+        <h3 style={{color: "red"}}>{this.state.error}</h3>
         <div className = "documents">
-          <p>My documents</p>
-          {this.state.docs.map(doc => <DocDisplay id={doc}/>)}
+          <Header as="h3">My documents</Header>
+          <Grid>
+            <Grid.Row>
+              <Grid.Column width={4}>
+                <NewDocModal func={this.new.bind(this)} button="Create"
+                             head = "Create Doc"
+                             title="Create a new document"
+                             placeholder="Document Title"/>
+              </Grid.Column>
+              <Grid.Column width={4}>
+                <NewDocModal func={this.add.bind(this)} button="Add"
+                             head = "Add Doc"
+                             title="Add an existing document"
+                             placeholder="Document Key"/>
+              </Grid.Column>
+            </Grid.Row>
+          </Grid>
+          {this.state.docs.map(doc => <div style={{border: "1px solid black", borderRadius:"5px", margin:"5px", padding:"5px"}}>
+            <Header as="h4"><Link to={{pathname: "/doc", state: {doc:doc, user: this.state.user}}}>{doc.title}</Link></Header>
+            <p>Author: {doc.author.name}</p></div>)}
         </div>
-        <input placeholder="paste a doc id" onChange={(e)=>{this.setState({add:e.target.value})}}/>
-        <button type="submit" onClick={this.add.bind(this)}>Add shared document</button>
       </div>);
   }
 }

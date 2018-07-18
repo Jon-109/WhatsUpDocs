@@ -1,11 +1,14 @@
 import React from 'react';
 import { BrowserRouter, Route, Link, Switch, Redirect } from 'react-router-dom';
-import { Header } from 'semantic-ui-react';
+import { Header, Button } from 'semantic-ui-react';
+// import socketIO from 'socket.io-client';
 import Login from './login';
 import Signup from './signup';
 import Portal from './portal';
 import Home from './home';
 import EditDoc from './editDoc';
+const path = 'http://127.0.0.1:2000'
+import socket from './../socket';
 
 export default class App extends React.Component {
   constructor(props){
@@ -24,7 +27,7 @@ export default class App extends React.Component {
   // }
 
   login(email, pwd) {
-    fetch('http://127.0.0.1:1337/login',
+    fetch(`${path}/login`,
       { method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -35,13 +38,12 @@ export default class App extends React.Component {
       .then(resp => resp.json())
       .then(userObj => {
         this.setState({ loggedin: true, user: userObj});
-
       })
       .catch(err => { console.log(err);});
   }
 
   logout(){
-    fetch('http://127.0.0.1:1337/logout').then(
+    fetch(`${path}/logout`).then(
       this.setState({
         loggedin: false,
         user: {},
@@ -61,12 +63,12 @@ export default class App extends React.Component {
     return (<div>
       <BrowserRouter basename="/">
         <div>
-          <div>
+          <div className="masterContainer">
             <Header as="h1">whatsupDOCS</Header>
             {this.state.loggedin ?
               <div>
-                <button onClick={this.logout.bind(this)}>Logout</button>
-                <button><Link to={portalPath}>Portal</Link></button>
+                <Button onClick={this.logout.bind(this)}>Logout</Button>
+                <Button><Link to={portalPath}>Portal</Link></Button>
               </div>
               : null}
             {renderPortal()}
@@ -74,7 +76,7 @@ export default class App extends React.Component {
         <Switch>
           <Route path="/login" render={props=> <Login login={this.login.bind(this)} {...props} />} />
           <Route path="/signup" component={Signup}/>
-          <Route path={portalPath} render={props=> <Portal user={this.state.user} {...props} />}/>
+          <Route path={portalPath} render={props=> <Portal user={this.state.user} socket={this.state.socket}{...props} />}/>
           <Route path="/doc" component={EditDoc}/>
         </Switch>
         </div>

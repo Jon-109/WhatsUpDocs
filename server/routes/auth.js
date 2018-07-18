@@ -39,45 +39,10 @@ module.exports = function(passport) {
     res.status(200).send('loggedout');
   });
 
-  // POST New document
-  router.post('/new', function(req, res) {
-      var d = new Doc({
-        // Note: Calling the email form field 'username' here is intentional,
-        //    passport is expecting a form field specifically named 'username'.
-        //    There is a way to change the name it expects, but this is fine.
-          title: req.body.title,
-          author: req.body.author._id,
-          password: req.body.password,
-          collaborators: req.body.collaborators,
-      });
-
-      d.save().then(saved => {
-        let tempDocsArr = req.body.author.docs.slice();
-        tempDocsArr.push(saved._id);
-        User.findByIdAndUpdate(req.body.author, {docs: tempDocsArr})
-            .then(updated => {console.log(updated); return res.json(saved)})})
-        .catch(err=>{console.error(err)});
-  });
-
-  router.post('/add', function(req, res) {
-    Doc.findById(req.body.doc).then(doc => {
-      if (doc.password === req.body.password){
-        let tempDocsArr = req.body.user.docs.slice();
-        tempDocsArr.push(doc._id);
-        User.findByIdAndUpdate(req.body.user._id, { docs: tempDocsArr }).then(user=>console.log(user));
-      }
-    })
-  });
-
-  router.get('/doc/:id', function(req, res) {
-      Doc.findById(req.params.id).lean().populate("author").exec()
-          .then(doc => res.json(doc)). catch(err=>{console.error(err)})
-  });
-
-  router.get('/user/:id', function(req, res) {
-      User.findById(req.params.id)
-          .then(user => res.json(user)). catch(err=>{console.error(err)})
-  });
+  router.post('/doc/:id', function(req,res){
+    Doc.findByIdAndUpdate(req.params.id, {content: req.body.content})
+       .then(saved => res.json(saved)).catch(err=>{console.error(err)})
+  })
 
   //   router.post('/profile/edit', function(req, res) {
   //     const updates = {

@@ -25,8 +25,16 @@ export default class DocDisplay extends React.Component {
       })})
   }
 
-  save(string){
-    fetch()
+  save(){
+    fetch(`http://127.0.0.1:1337/doc/${this.props.id}/save`,
+    { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: this.state.content,
+      }),
+    })
+    .then(resp => resp.json())
+    .catch(err => { console.log(err);});
   }
 
   render() {
@@ -35,8 +43,9 @@ export default class DocDisplay extends React.Component {
         <h3>{this.state.title}</h3>
         <p>Author: {this.state.author}</p>
         <p>Shareable Document ID: {this.state.id}</p>
-        <button onClick={this.save.bind(this, this.state.content)}>Save Changes</button>
+        <button onClick={this.save.bind(this)}>Save Changes</button>
         <div>
+
         </div>
       </div>);
   }

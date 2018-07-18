@@ -21,9 +21,6 @@ var userSchema = mongoose.Schema({
     email: {
         type: String,
         required: true
-    },
-    docs: {
-      type: Array,
     }
 });
 
@@ -41,11 +38,15 @@ var documentSchema = mongoose.Schema({
     ref: 'User',
   },
   collaborators: {
-    type: Array,
+    type: [
+      { ref: 'User',
+        type: mongoose.Schema.ObjectId,
+      }],
   },
   content: {
-    type: String,
-  }
+    type: Object,
+    default: {},
+  },
 });
 
 var User = mongoose.model('User', userSchema);

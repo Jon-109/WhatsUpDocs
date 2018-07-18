@@ -22,7 +22,6 @@ mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true });
 app.use(session({
   secret: process.env.SECRET,
   name: 'Catscoookie',
-  store: new MongoStore({mongooseConnection: mongoose.connection }),
   proxy: true,
   resave: true,
   saveUninitialized: true,

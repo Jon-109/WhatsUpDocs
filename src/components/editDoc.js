@@ -1,5 +1,8 @@
 import React from 'react';
-import { Editor, EditorState, RichUtils } from 'draft-js';
+import { Header, Form, Button } from 'semantic-ui-react';
+import { Editor, EditorState, RichUtils, convertToRaw, convertFromRaw, SelectionState } from 'draft-js';
+const path = 'http://127.0.0.1:2000';
+import socket from './../socket';
 
 const styleMap = {
   'UPPERCASE': {
@@ -13,26 +16,44 @@ const styleMap = {
 export default class EditDoc extends React.Component {
   constructor(props) {
     super(props);
+    const editor = this.props.location.state.doc.content
+               ? EditorState.createWithContent(convertFromRaw(this.props.location.state.doc.content))
+               : EditorState.createEmpty();
     this.state = {
-      editorState: EditorState.createEmpty(),
-      id: "",
-      title: "",
-      author: "",
-      content: "",
+      editorState: editor,
+      collaborators: this.props.location.state.doc.collaborators,
+      id: this.props.location.state.doc._id,
+      title: this.props.location.state.doc.title,
+      author: this.props.location.state.doc.author,
+      user: this.props.location.state.user,
+      log: [],
+      editColor: '',
     };
-    this.onChange = (editorState) => this.setState({ editorState });
+    this.onChange = (editorState) => {
+      this.setState({ editorState });
+      socket.emit('content',
+                  convertToRaw(this.state.editorState.getCurrentContent()),
+                  this.state.editorState.getSelection())
+    };
   }
 
   componentDidMount(){
-    fetch(`http://127.0.0.1:1337/doc/${this.props.location.state.id}`)
-    .then(get => get.json())
-    .then(docObj => {
+    socket.emit('join', this.state.id, this.state.user);
+    socket.on('joined', (color) => {
+      this.setState({ editColor: color });
+    })
+    socket.on('joinmsg', msg => {
+      let tempArr = this.state.log.slice();
+      tempArr.push(msg)
       this.setState({
-        id: docObj._id,
-        title: docObj.title,
-        author: docObj.author.name,
-        content: docObj.content
-      })})
+        log: tempArr,
+      })
+    })
+
+    socket.on('content', (msg, currentLoc) => {
+      const editor = EditorState.createWithContent(convertFromRaw(msg));
+      this.setState({ editorState: EditorState.forceSelection(editor, new SelectionState(currentLoc)) });
+    })
   }
 
   toggleInlineStyle(e, inlineStyle) {
@@ -45,25 +66,25 @@ export default class EditDoc extends React.Component {
     this.onChange(RichUtils.toggleBlockType(this.state.editorState, blockType))
   }
 
-  save(string){
-    fetch(`http://127.0.0.1:1337/doc/${this.state.id}`,
-      { method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          doc: this.state.add,
-          user: this.state.user,
-          password: 123,
-        }),
-      }).then();
+  save(){
+    socket.emit('save', this.state.id, convertToRaw(this.state.editorState.getCurrentContent()));
+  }
+
+  autoSave(){
+    setInterval(this.save.bind(this), 30000);
   }
 
   render() {
     return (
       <div>
-        <h3>{this.state.title}</h3>
-        <p>Author: {this.state.author}</p>
-        <p>Shareable Document ID: {this.state.id}</p>
-        <button onClick={this.save.bind(this, this.state.content)}>Save Changes</button>
+        {/* <h3>{this.state.title}</h3>
+        <p>Author: {this.state.author.name}</p>
+        <p>Collaborators:
+          {this.state.collaborators.map(user=><li>{user.name}</li>)}
+        </p>
+        <p>Shareable Document ID: {this.state.id}</p> */}
+        <button onClick={this.save.bind(this)}>Save Changes</button>
+        {this.autoSave.bind(this)}
         <div className="editor">
           <div className="toolbar">
             <button onMouseDown={(e) => this.toggleInlineStyle(e, 'BOLD')}>B</button>
@@ -80,9 +101,12 @@ export default class EditDoc extends React.Component {
             <button onMouseDown={(e) => this.toggleInlineStyle(e, 'header-four')}>H4</button>
             <button onMouseDown={(e) => this.toggleInlineStyle(e, 'header-five')}>H5</button>
             <button onMouseDown={(e) => this.toggleInlineStyle(e, 'header-six')}>H6</button>
-
           </div>
           <Editor editorState={this.state.editorState} onChange={this.onChange}/>
+        </div>
+        <div style={{border:"1px solid black", marginTop: "2em"}}>
+          <p><u>Edit Log</u></p>
+          {this.state.log.map(msg => <li>{msg}</li>)}
         </div>
       </div>
     );
