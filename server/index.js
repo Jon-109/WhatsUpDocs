@@ -93,7 +93,7 @@ io.on('connection', function (socket) {
   })
 
   socket.on('content', (msg, currentLoc, color) => {
-    // console.log('content', msg, currentLoc);
+    console.log(msg);
     socket.to(socket.room).emit('content', msg, currentLoc, color);
   })
 

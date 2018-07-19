@@ -69,3 +69,7 @@ h2 {
   display: inline-block;
   font-size: 14px;
 }
+
+.masterContainer {
+  margin: 10px
+}
