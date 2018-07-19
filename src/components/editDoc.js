@@ -1,7 +1,8 @@
 import React, {Component, PropTypes} from 'react';
 import createAlignmentPlugin from 'draft-js-alignment-plugin';
-import { Header, Form, Button } from 'semantic-ui-react';
-import { Editor, EditorState, RichUtils, CharacterMetadata, convertToRaw, convertFromRaw, SelectionState, genKey, ContentBlock, ContentState, Modifier } from 'draft-js';
+import { Header, Form, Button, Icon } from 'semantic-ui-react';
+import { OrderedSet } from 'immutable';
+import { Editor, EditorState, RichUtils, CharacterMetadata, convertToRaw, convertFromRaw, SelectionState, genKey, ContentBlock, ContentState, Modifier, Entity } from 'draft-js';
 import RichTextEditor from 'react-rte';
 import createStyles from 'draft-js-custom-styles';
 import ColorPicker, {colorPickerPlugin} from 'draft-js-color-picker'
@@ -10,96 +11,7 @@ import socket from './../socket';
 
 const numbers = ['8px', '12px', '16px', '24px', '48px', '72px'];
 const fonts = ['Times New Roman', 'Arial', 'Helvetica', 'Courier', 'Verdana', 'Tahoma'];
-
-const styleMap = {
-  UPPERCASE: {
-    textTransform: 'uppercase',
-  },
-  LOWERCASE: {
-    textTransform: 'lowercase',
-  },
-  '8px': {
-    fontSize: '8px',
-  },
-  '12px': {
-    fontSize: '12px',
-  },
-  '16px': {
-    fontSize: '16px',
-  },
-  '24px': {
-    fontSize: '24px',
-  },
-  '48px': {
-    fontSize: '48px',
-  },
-  '72px': {
-    fontSize: '72px',
-  },
-  'Times New Roman': {
-    fontFamily: 'Times New Roman',
-  },
-  Arial: {
-    fontFamily: 'Arial',
-  },
-  Helvetica: {
-    fontFamily: 'Helvetica',
-  },
-  Courier: {
-    fontFamily: 'Courier',
-  },
-  Verdana: {
-    fontFamily: 'Verdana',
-  },
-  Tahoma: {
-    fontFamily: 'Tahoma',
-  },
-  HIGHLIGHT: {
-    backgroundColor: 'yellow',
-  },
-};
-
-
-const presetColors = [
-  '#ff00aa',
-  '#F5A623',
-  '#F8E71C',
-  '#8B572A',
-  '#7ED321',
-  '#417505',
-  '#BD10E0',
-  '#9013FE',
-  '#4A90E2',
-  '#50E3C2',
-  '#B8E986',
-  '#000000',
-  '#4A4A4A',
-  '#9B9B9B',
-  '#FFFFFF',
-];
-
-function rgbaToHex (rgba) {
-    var parts = rgba.substring(rgba.indexOf("(")).split(","),
-        r = parseInt(parts[0].substring(1).trim(), 10),
-        g = parseInt(parts[1].trim(), 10),
-        b = parseInt(parts[2].trim(), 10),
-        a = parseFloat(parts[3].substring(0, parts[3].length - 1).trim()).toFixed(2);
-
-    return ('#' + r.toString(16) + g.toString(16) + b.toString(16) + (a * 255).toString(16).substring(0,2));
-}
-
-const getBlockStyle = (block) => {
-    switch (block.getType()) {
-        case 'left':
-            return 'align-left';
-        case 'center':
-            return 'align-center';
-        case 'right':
-            return 'align-right';
-        default:
-            return null;
-    }
-}
+let lineColor = 'black';
 
 const customStyleMap = {
  MARK: {
@@ -125,7 +37,7 @@ export default class EditDoc extends React.Component {
       user: this.props.location.state.user,
       log: [],
       editColor: '',
-      color: 'black',
+      prevEdits: {}
     };
     this.onChange = async (editorState) => {
       await this.setState({ editorState });
@@ -133,14 +45,12 @@ export default class EditDoc extends React.Component {
                   convertToRaw(this.state.editorState.getCurrentContent()),
                   this.state.editorState.getSelection(),
                   this.state.editColor
-                )
+                );
     };
-    this.onFocus = () => {
-      console.log('focusing');
-      socket.emit('focus', this.state.editorState.getSelection(), this.state.editColor)
-    }
     this.getEditorState = () => this.state.editorState;
     this.picker = colorPickerPlugin(this.onChange, this.getEditorState);
+    this.autoSave = this.autoSave.bind(this);
+    this.save = this.save.bind(this);
   }
 
   componentDidMount(){
@@ -157,34 +67,37 @@ export default class EditDoc extends React.Component {
     })
 
     socket.on('content', (msg, currentLoc, color) => {
-      const content = convertFromRaw(msg);
-      // const cursor = new ContentBlock({
-      //   key: genKey(),
-      //   type: 'unstyled',
-      //   text: '|',
-      //   inlineStyleRanges: [Array],
-      //   entityRanges: [{"style": `color-${color}`}],
-      //   data: {},
-      // });
-      //
-      // const blockmap = content.getBlockMap().set(cursor.key, cursor);
-      // console.log("blockmap", blockmap);
-      // const contentState = ContentState
-      //                 .createFromBlockArray(blockmap.toArray())
-      //                 .set('selectionAfter', content.getSelectionAfter());
+      // let prevSelection;
+      // if (this.state.prevEdits[color]) {
+      //   prevSelection = this.state.prevEdits[color];
+      // } else {
+      //   prevSelection = SelectionState.createEmpty();
+      // }
+      // let content = Modifier.removeInlineStyle(convertFromRaw(msg), prevSelection, 'LINE');
+      let content = convertFromRaw(msg);
+      lineColor = color;
+      const selectionState = new SelectionState(currentLoc);
+      //console.log(content.getBlockForKey(selectionState.getEndKey()).getText())
+      let anchor;
+      if (selectionState.getEndOffset()===0) { anchor = 0; }
+      else { anchor = selectionState.getEndOffset() - 1; };
+      const updated = selectionState.merge({ anchorOffset: anchor })
+      //console.log(content.getBlockForKey(updated.getEndKey()).getText())
+      content = Modifier.applyInlineStyle(content, updated, 'LINE');
       const editor = EditorState.createWithContent(content);
-      this.setState({ editorState: EditorState.forceSelection(editor, new SelectionState(currentLoc)) });
-    })
+      // console.log(selectionState.focusKey);
+      // const block = content.getBlockForKey(selectionState.focusKey);
+      // console.log(block.getInlineStyleAt(block.getLength()));
+      // console.log("highlight", selectionState.serialize());
+      const next = EditorState.forceSelection(editor, new SelectionState(currentLoc));
+      const final = RichUtils.toggleInlineStyle(next, color);
 
-    socket.on('focus', (selection, color) => {
-      // console.log('focusing on frontend')
-      // const content = Modifier.insertText(
-      //   this.state.editorState.getCurrentContent(),
-      //   this.state.editorState.getSelection(),
-      //   'blablablab'
-      // );
-      // console.log(content);
-      this.setState({ editorState: EditorState.createWithContent(content) })
+      // const tempObj = Object.assign(this.state.prevEdits);
+      // tempObj[color] = updated;
+
+      this.setState({ editorState: final,
+        // prevEdits: tempObj
+      });
     })
   }
 
@@ -233,46 +146,158 @@ export default class EditDoc extends React.Component {
 
   save(){
     socket.emit('save', this.state.id, convertToRaw(this.state.editorState.getCurrentContent()));
+    console.log('saved');
   }
 
   autoSave(){
-    setInterval(this.save.bind(this), 30000);
+    setInterval(this.save, 30000);
   }
 
   render() {
     const options = x => x.map(fontSize => {
       return <option key={fontSize} value={fontSize}>{fontSize}</option>;
     });
+
+    const styleMap = {
+      UPPERCASE: {
+        textTransform: 'uppercase',
+      },
+      LOWERCASE: {
+        textTransform: 'lowercase',
+      },
+      '8px': {
+        fontSize: '8px',
+      },
+      '12px': {
+        fontSize: '12px',
+      },
+      '16px': {
+        fontSize: '16px',
+      },
+      '24px': {
+        fontSize: '24px',
+      },
+      '48px': {
+        fontSize: '48px',
+      },
+      '72px': {
+        fontSize: '72px',
+      },
+      'Times New Roman': {
+        fontFamily: 'Times New Roman',
+      },
+      Arial: {
+        fontFamily: 'Arial',
+      },
+      Helvetica: {
+        fontFamily: 'Helvetica',
+      },
+      Courier: {
+        fontFamily: 'Courier',
+      },
+      Verdana: {
+        fontFamily: 'Verdana',
+      },
+      Tahoma: {
+        fontFamily: 'Tahoma',
+      },
+      HIGHLIGHT: {
+        backgroundColor: 'yellow',
+      },
+      red:{
+        backgroundColor: 'red',
+      },
+      blue:{
+        backgroundColor:'blue',
+      },
+      green:{
+        backgroundColor:'green',
+      },
+      purple:{
+        backgroundColor:'purple',
+      },
+      yellow:{
+        backgroundColor: 'yellow',
+      },
+      brown:{
+        backgroundColor:'brown',
+      },
+      LINE:{
+        borderRight: `1px solid ${lineColor}`,
+      }
+    };
+
+    const presetColors = [
+      '#ff00aa',
+      '#F5A623',
+      '#F8E71C',
+      '#8B572A',
+      '#7ED321',
+      '#417505',
+      '#BD10E0',
+      '#9013FE',
+      '#4A90E2',
+      '#50E3C2',
+      '#B8E986',
+      '#000000',
+      '#4A4A4A',
+      '#9B9B9B',
+      '#FFFFFF',
+    ];
+
+    function rgbaToHex (rgba) {
+        var parts = rgba.substring(rgba.indexOf("(")).split(","),
+            r = parseInt(parts[0].substring(1).trim(), 10),
+            g = parseInt(parts[1].trim(), 10),
+            b = parseInt(parts[2].trim(), 10),
+            a = parseFloat(parts[3].substring(0, parts[3].length - 1).trim()).toFixed(2);
+
+        return ('#' + r.toString(16) + g.toString(16) + b.toString(16) + (a * 255).toString(16).substring(0,2));
+    }
+
+    const getBlockStyle = (block) => {
+        switch (block.getType()) {
+            case 'left':
+                return 'align-left';
+            case 'center':
+                return 'align-center';
+            case 'right':
+                return 'align-right';
+            default:
+                return null;
+        }
+    }
+
     return (
-      <div>
+      <div className="masterContainer">
         <h3>{this.state.title}</h3>
         <p>Author: {this.state.author.name}</p>
         <p>Collaborators:
           {this.state.collaborators.map(user=><li>{user.name}</li>)}
         </p>
         <p>Shareable Document ID: {this.state.id}</p>
-        <button onClick={this.save.bind(this)}>Save Changes</button>
-        {this.autoSave.bind(this)}
+        <Button onClick={this.save}>Save Changes</Button>
+        {/* {this.autoSave} */}
         <div className="editor">
           <div className="toolbar">
-            <button className="button" onMouseDown={e => this.toggleInlineStyle(e, 'BOLD')}><span className="glyphicon glyphicon-bold"></span></button>
-            <button className="button" onMouseDown={e => this.toggleInlineStyle(e, 'ITALIC')}><span className="glyphicon glyphicon-italic"></span></button>
-            <button className="button" onMouseDown={e => this.toggleInlineStyle(e, 'UNDERLINE')}><i className="fa fa-underline"></i></button>
-            <button className="button" onMouseDown={e => this.toggleInlineStyle(e, 'STRIKETHROUGH')}><i className="	fa fa-strikethrough"></i></button>
-            <button className="button" onMouseDown={e => this.toggleInlineStyle(e, 'HIGHLIGHT')}>Highlight</button>
-            <button className="button" onMouseDown={e => this.toggleInlineStyle(e, 'UPPERCASE')}>ABC</button>
-            <button className="button" onMouseDown={e => this.toggleInlineStyle(e, 'LOWERCASE')}>abc</button>
-            <button className="button" onClick={this.onUndo.bind(this)}><i className="material-icons">&#xe166;</i></button>
-            <button className="button" onClick={this.onRedo.bind(this)}><i className="material-icons">&#xe15a;</i></button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'unordered-list-item')}><i className="fa fa-list-ul"></i></button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'ordered-list-item')}><i className="fa fa-list-ol"></i></button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'header-one')}>H1</button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'header-two')}>H2</button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'header-three')}>H3</button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'header-four')}>H4</button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'header-five')}>H5</button>
-            <button className="button" onMouseDown={e => this.toggleBlockType(e, 'header-six')}>H6</button>
-            <button className="colorpicker"> Font Color
+            <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'BOLD')} icon><Icon name="bold" /></Button>
+            <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'ITALIC')} icon><Icon name="italic" /></Button>
+            <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'UNDERLINE')} icon><Icon name="underline" /></Button>
+            <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'STRIKETHROUGH')} icon><Icon name="strikethrough" /></Button>
+            <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'HIGHLIGHT')}>Highlight</Button>
+            <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'UPPERCASE')}>ABC</Button>
+            <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'LOWERCASE')}>abc</Button>
+            <Button className="Button" onClick={this.onUndo.bind(this)} icon><Icon name="undo" /></Button>
+            <Button className="Button" onClick={this.onRedo.bind(this)} icon><Icon name="redo" /></Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'unordered-list-item')} icon><Icon name="unordered list" /></Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'ordered-list-item')} icon><Icon name="ordered list" /></Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'header-one')}>H1</Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'header-two')}>H2</Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'header-three')}>H3</Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'header-four')}>H4</Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'header-five')}>H5</Button>
+            <Button className="Button" onMouseDown={e => this.toggleBlockType(e, 'header-six')}>H6</Button>
+            <Button className="colorpicker"> Font Color
               <ColorPicker
                 toggleColor={color => {
                   this.setState({
@@ -284,15 +309,15 @@ export default class EditDoc extends React.Component {
                 presetColors = {presetColors}
                 color={this.state.color}
               />
-            </button>
+            </Button>
             <br></br>
-            <button className="align-left" onMouseDown={e => this.toggleBlockType(e, 'left')}><span className="glyphicon glyphicon-align-left"></span></button>
-            <button className="align-center" onMouseDown={e => this.toggleBlockType(e, 'center')}><span className="glyphicon glyphicon-align-center"></span></button>
-            <button className="align-left" onMouseDown={e => this.toggleBlockType(e, 'right')}><span className="glyphicon glyphicon-align-right"></span></button>
-            <select className="button" onChange={e => this.toggleInlineStyle(e, e.target.value)}>
+            <Button className="align-left" onMouseDown={e => this.toggleBlockType(e, 'left')} icon><Icon name="align left" /></Button>
+            <Button className="align-center" onMouseDown={e => this.toggleBlockType(e, 'center')} icon><Icon name="align center" /></Button>
+            <Button className="align-left" onMouseDown={e => this.toggleBlockType(e, 'right')} icon><Icon name="align right" /></Button>
+            <select className="Button" onChange={e => this.toggleInlineStyle(e, e.target.value)}>
               {numbers.map(item => <option key={item}>{item}</option>)}
             </select>
-            <select className="button" onChange={e => this.toggleInlineStyle(e, e.target.value)}>
+            <select className="Button" onChange={e => this.toggleInlineStyle(e, e.target.value)}>
               {fonts.map(item => <option key={item}>{item}</option>)}
             </select>
           </div>

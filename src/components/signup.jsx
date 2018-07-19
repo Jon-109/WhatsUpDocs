@@ -29,7 +29,7 @@ export default class Signup extends React.Component {
 
     render() {
         return (
-        <div>
+        <div className="masterContainer">
           <Form>
             <Form.Field required>
               <label>Full Name</label>

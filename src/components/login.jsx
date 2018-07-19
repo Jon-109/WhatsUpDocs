@@ -20,7 +20,7 @@ export default class Login extends React.Component {
   }
 
   render() {
-    return (<div>
+    return (<div className="masterContainer">
       <Form>
         <Form.Field required>
           <label>Email</label>
