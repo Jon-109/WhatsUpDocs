@@ -1,13 +1,15 @@
 import React, {Component, PropTypes} from 'react';
 import createAlignmentPlugin from 'draft-js-alignment-plugin';
 import { Header, Form, Button, Icon } from 'semantic-ui-react';
-import { OrderedSet } from 'immutable';
+import { OrderedSet, OrderedMap } from 'immutable';
 import { Editor, EditorState, RichUtils, CharacterMetadata, convertToRaw, convertFromRaw, SelectionState, genKey, ContentBlock, ContentState, Modifier, Entity } from 'draft-js';
 import RichTextEditor from 'react-rte';
+import { Link } from 'react-router-dom'
 import createStyles from 'draft-js-custom-styles';
 import ColorPicker, {colorPickerPlugin} from 'draft-js-color-picker'
 const path = 'http://127.0.0.1:2000';
 import socket from './../socket';
+import RevisionHistory from './revisionhistory'
 
 const numbers = ['8px', '12px', '16px', '24px', '48px', '72px'];
 const fonts = ['Times New Roman', 'Arial', 'Helvetica', 'Courier', 'Verdana', 'Tahoma'];
@@ -26,21 +28,28 @@ export default class EditDoc extends React.Component {
   constructor(props) {
     super(props);
     const editor = this.props.location.state.doc.content
-               ? EditorState.createWithContent(convertFromRaw(this.props.location.state.doc.content))
+               ? EditorState.createWithContent(convertFromRaw(JSON.parse(this.props.location.state.doc.content)))
                : EditorState.createEmpty();
     this.state = {
       editorState: editor,
+      selection: editor.getSelection(),
+      styled: editor,
       collaborators: this.props.location.state.doc.collaborators,
       id: this.props.location.state.doc._id,
       title: this.props.location.state.doc.title,
       author: this.props.location.state.doc.author,
       user: this.props.location.state.user,
+      history: this.props.location.state.doc.history,
       log: [],
       editColor: '',
-      prevEdits: {}
+      prevEdits: {},
+      intervalId: null,
+      clients: [],
     };
     this.onChange = async (editorState) => {
-      await this.setState({ editorState });
+      await this.setState({ editorState, selection: editorState.getSelection()});
+      // var blocks = this.state.editorState.getCurrentContent().getBlocksAsArray();
+      // console.log('own state', blocks[blocks.length-1].getCharacterList())
       socket.emit('content',
                   convertToRaw(this.state.editorState.getCurrentContent()),
                   this.state.editorState.getSelection(),
@@ -51,54 +60,73 @@ export default class EditDoc extends React.Component {
     this.picker = colorPickerPlugin(this.onChange, this.getEditorState);
     this.autoSave = this.autoSave.bind(this);
     this.save = this.save.bind(this);
+    this.clearStyling = this.clearStyling.bind(this);
   }
 
   componentDidMount(){
     socket.emit('join', this.state.id, this.state.user);
     socket.on('joined', (color) => {
-      this.setState({ editColor: color });
+      this.setState({ editColor: color, clients: [color] });
     })
-    socket.on('joinmsg', msg => {
+    socket.on('joinmsg', (msg, color) => {
       let tempArr = this.state.log.slice();
       tempArr.push(msg)
+      let tempClients = this.state.clients.slice();
+      tempClients.push(color);
       this.setState({
         log: tempArr,
+        clients: tempClients,
       })
     })
 
     socket.on('content', (msg, currentLoc, color) => {
-      // let prevSelection;
-      // if (this.state.prevEdits[color]) {
-      //   prevSelection = this.state.prevEdits[color];
-      // } else {
-      //   prevSelection = SelectionState.createEmpty();
-      // }
-      // let content = Modifier.removeInlineStyle(convertFromRaw(msg), prevSelection, 'LINE');
+      console.log('should be seeing', color);
+      console.log('i am ', this.state.editColor);
+
+      //plain content updating
       let content = convertFromRaw(msg);
-      lineColor = color;
       const selectionState = new SelectionState(currentLoc);
-      //console.log(content.getBlockForKey(selectionState.getEndKey()).getText())
+
+      let blockMap = content.getBlockMap();
+      blockMap.entrySeq().forEach((e)=> {
+        const key = e[0];
+        const block = e[1];
+        var charList = block.getCharacterList();
+        for (var c = 0; c<charList.size; c++){
+          var style = charList.get(c);
+          for (var i in this.state.clients){
+            var co = this.state.clients[i];
+            if (style.getStyle().equals(OrderedSet.of(`${co}LINE`))){
+              var newStyle = CharacterMetadata.removeStyle(style, `${co}LINE`);
+              charList = charList.set(c, newStyle);
+            }
+          }
+        }
+        const tempBlock = block.set('characterList', charList);
+        blockMap = blockMap.set(key, tempBlock);
+      })
+      content = content.set('blockMap', blockMap);
+
+      // cursor styling
       let anchor;
-      if (selectionState.getEndOffset()===0) { anchor = 0; }
+      if (selectionState.getEndOffset() === 0) { anchor = 0; }
       else { anchor = selectionState.getEndOffset() - 1; };
       const updated = selectionState.merge({ anchorOffset: anchor })
-      //console.log(content.getBlockForKey(updated.getEndKey()).getText())
-      content = Modifier.applyInlineStyle(content, updated, 'LINE');
-      const editor = EditorState.createWithContent(content);
-      // console.log(selectionState.focusKey);
-      // const block = content.getBlockForKey(selectionState.focusKey);
-      // console.log(block.getInlineStyleAt(block.getLength()));
-      // console.log("highlight", selectionState.serialize());
-      const next = EditorState.forceSelection(editor, new SelectionState(currentLoc));
-      const final = RichUtils.toggleInlineStyle(next, color);
+      let contentWithCursor = content;
+      if (updated.getStartOffset() !== updated.getEndOffset()){
+        contentWithCursor = Modifier.applyInlineStyle(content, updated, `${color}LINE`);
+      }
+      const editorWithCursor = EditorState.createWithContent(contentWithCursor);
 
-      // const tempObj = Object.assign(this.state.prevEdits);
-      // tempObj[color] = updated;
+      const next = EditorState.forceSelection(editorWithCursor, selectionState);
+      const editorHighlightCursor = RichUtils.toggleInlineStyle(next, color);
+      const final = EditorState.forceSelection(editorHighlightCursor, selectionState);
 
-      this.setState({ editorState: final,
-        // prevEdits: tempObj
-      });
+      this.setState({ editorState: final });
     })
+
+    let intervalId = this.autoSave();
+    this.setState({ intervalId: intervalId })
   }
 
   toggleInlineStyle(e, inlineStyle) {
@@ -144,16 +172,64 @@ export default class EditDoc extends React.Component {
     return start !== end;
   };
 
-  save(){
-    socket.emit('save', this.state.id, convertToRaw(this.state.editorState.getCurrentContent()));
+  clearStyling(){
+    const content = this.state.editorState.getCurrentContent();
+    let blockMap = content.getBlockMap();
+    blockMap.entrySeq().forEach((e)=> {
+      const key = e[0];
+      const block = e[1];
+      var charList = block.getCharacterList();
+      for (var c = 0; c<charList.size; c++){
+        const allColors = ['red','blue','green','purple','brown','yellow'];
+        var style = charList.get(c);
+        for (var i in allColors){
+          var color = allColors[i];
+          if (style.getStyle().equals(OrderedSet.of(`${color}LINE`))){
+            var newStyle = CharacterMetadata.removeStyle(style, `${color}LINE`);
+            charList = charList.set(c, newStyle);
+          }
+        }
+      }
+      const tempBlock = block.set('characterList', charList);
+      blockMap = blockMap.set(key, tempBlock);
+    })
+    return content.set('blockMap', blockMap);
+  }
+
+  save() {
+    const content = this.clearStyling();
+    socket.emit('save', this.state.id, convertToRaw(content));
     console.log('saved');
   }
 
+  history(){
+    this.save();
+    const content = this.clearStyling();
+    socket.emit('historySave', this.state.id, convertToRaw(content), content, this.state.user);
+
+    socket.on('newHistory', saved => {
+      var hist = JSON.parse(saved);
+      console.log("new history!");
+      const tempHist = this.state.history.slice();
+      tempHist.push(hist);
+      this.setState({ history: tempHist })
+      console.log(tempHist);
+    })
+  }
+
   autoSave(){
-    setInterval(this.save, 30000);
+    return setInterval(this.save, 30000);
+  }
+
+  restore(content){
+    const editorState = EditorState.createWithContent(convertFromRaw(JSON.parse(content)));
+    this.setState({ editorState })
   }
 
   render() {
+    // console.log(this.state.history);
+    var portalPath = `/portal/${this.state.user._id}`;
+
     const options = x => x.map(fontSize => {
       return <option key={fontSize} value={fontSize}>{fontSize}</option>;
     });
@@ -222,9 +298,24 @@ export default class EditDoc extends React.Component {
       brown:{
         backgroundColor:'brown',
       },
-      LINE:{
-        borderRight: `1px solid ${lineColor}`,
-      }
+      redLINE:{
+        borderRight: `1px solid red`,
+      },
+      blueLINE:{
+        borderRight: `1px solid blue`,
+      },
+      greenLINE:{
+        borderRight: `1px solid green`,
+      },
+      purpleLINE:{
+        borderRight: `1px solid purple`,
+      },
+      yellowLINE:{
+        borderRight: `1px solid yellow`,
+      },
+      brownLINE:{
+        borderRight: `1px solid red`,
+      },
     };
 
     const presetColors = [
@@ -270,14 +361,14 @@ export default class EditDoc extends React.Component {
 
     return (
       <div className="masterContainer">
+        <Button onClick={() => { clearInterval(this.state.intervalId); }}>
+          <Link to={portalPath}>Back to Portal</Link>
+        </Button>
         <h3>{this.state.title}</h3>
         <p>Author: {this.state.author.name}</p>
-        <p>Collaborators:
-          {this.state.collaborators.map(user=><li>{user.name}</li>)}
-        </p>
+        <p>Collaborators:{this.state.collaborators.map(user=><li>{user.name}</li>)}</p>
         <p>Shareable Document ID: {this.state.id}</p>
-        <Button onClick={this.save}>Save Changes</Button>
-        {/* {this.autoSave} */}
+        <Button onClick={this.history.bind(this)}>Save Changes</Button>
         <div className="editor">
           <div className="toolbar">
             <Button className="Button" onMouseDown={e => this.toggleInlineStyle(e, 'BOLD')} icon><Icon name="bold" /></Button>
@@ -323,7 +414,7 @@ export default class EditDoc extends React.Component {
           </div>
           <div className="textbox">
             <Editor
-              editorState={this.state.editorState}
+              editorState={this.state.selection? EditorState.forceSelection(this.state.editorState, this.state.selection) : this.state.editorState}
               customStyleMap={styleMap}
               onChange={this.onChange}
               placeholder="Click here to begin writing..."
@@ -336,6 +427,10 @@ export default class EditDoc extends React.Component {
             />
           </div>
         </div>
+        <RevisionHistory title={this.state.title}
+                         history = {this.state.history}
+                         restore = {this.restore.bind(this)}
+                       />
         <div style={{border:"1px solid black", marginTop: "2em"}}>
           <p><u>Edit Log</u></p>
           {this.state.log.map(msg => <li>{msg}</li>)}
