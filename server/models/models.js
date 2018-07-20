@@ -43,16 +43,47 @@ var documentSchema = mongoose.Schema({
         type: mongoose.Schema.ObjectId,
       }],
   },
+  history:{
+    type: [
+      {
+        ref: 'History',
+        type: mongoose.Schema.ObjectId,
+      }
+    ]
+  },
+  content: {
+    type: String,
+    default: "",
+  },
+});
+
+var historySchema = mongoose.Schema({
+  docId: {
+    type: String,
+    required: true,
+  },
+  saver: {
+    type: mongoose.Schema.ObjectId,
+    ref:'User'
+  },
   content: {
     type: Object,
     default: {},
   },
+  time:{
+    type: Date,
+  },
+  HTMLDiff:{
+    type: String,
+  }
 });
 
 var User = mongoose.model('User', userSchema);
 var Doc = mongoose.model('Doc', documentSchema)
+var History = mongoose.model('History', historySchema);
 
 module.exports = {
   User: User,
   Doc: Doc,
+  History: History,
 };

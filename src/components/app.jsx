@@ -68,7 +68,6 @@ export default class App extends React.Component {
             {this.state.loggedin ?
               <div>
                 <Button onClick={this.logout.bind(this)}>Logout</Button>
-                <Button><Link to={portalPath}>Portal</Link></Button>
               </div>
               : null}
             {renderPortal()}
